@@ -1,6 +1,10 @@
-set(src_dirs LED RGB_LED)
+set(src_dirs
+                EXIT
+                LED)
 
-set(include_dirs LED RGB_LED)
+set(include_dirs 
+                EXIT
+                LED)
 
 set(requires driver)
 
