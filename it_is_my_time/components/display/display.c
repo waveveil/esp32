@@ -181,7 +181,13 @@ void display_init(void)
     ssd1306_write_cmd(0x8D); // charge pump
     ssd1306_write_cmd(0x14); // enable
     ssd1306_write_cmd(0x20); // memory addressing mode
-    ssd1306_write_cmd(0x00); // horizontal
+    ssd1306_write_cmd(0x02); // page addressing mode
+    ssd1306_write_cmd(0x21); // set column address range
+    ssd1306_write_cmd(0x00); // start = 0
+    ssd1306_write_cmd(0x7F); // end = 127
+    ssd1306_write_cmd(0x22); // set page address range
+    ssd1306_write_cmd(0x00); // start = 0
+    ssd1306_write_cmd(0x07); // end = 7
     ssd1306_write_cmd(0xA1); // segment remap
     ssd1306_write_cmd(0xC8); // COM scan direction
     ssd1306_write_cmd(0xDA); // COM pins

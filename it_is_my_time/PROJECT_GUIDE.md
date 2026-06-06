@@ -941,9 +941,9 @@ static esp_err_t i2s_setup(uint32_t sample_rate)
         i2s_chan_config_t chan_cfg = {
             .id = I2S_NUM_0,
             .role = I2S_ROLE_MASTER,   // ESP32 做主设备（产生时钟信号）
-            .dma_desc_num = 8,          // 8 个 DMA 描述符
+            .dma_desc_num = 16,         // 16 个 DMA 描述符（~174ms 缓冲）
             .dma_frame_num = 480,       // 每个描述符 480 帧
-            .auto_clear = false,
+            .auto_clear = true,         // 欠载时输出静音，不重放旧数据
         };
         ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &s_i2s_tx, NULL));
 
@@ -984,11 +984,12 @@ static esp_err_t i2s_setup(uint32_t sample_rate)
 
 **解释：**
 - I2S 用 DMA 搬运数据：硬件自动从内存把 PCM 数据送到 I2S 引脚，不占 CPU
-- `dma_desc_num = 8` 和 `dma_frame_num = 480` 决定了缓冲区大小：
-  - 8 × 480 = 3840 帧的缓冲区
+- `dma_desc_num = 16` 和 `dma_frame_num = 480` 决定了缓冲区大小：
+  - 16 × 480 = 7680 帧的缓冲区
   - 1 帧 = 左右声道各 1 个 16 位采样 = 4 字节
-  - 总缓冲 = 3840 × 4 = 15360 字节 ≈ 87 毫秒（在 44.1kHz 下）
-  - 这意味着即便 CPU 被 WiFi 等其他任务占用了 80 多毫秒，音频也不会断
+  - 总缓冲 = 7680 × 4 = 30720 字节 ≈ 174 毫秒（在 44.1kHz 下）
+  - 这意味着即便 WiFi 有短暂延迟，音频也有足够缓冲不会断流
+- `auto_clear = true`：DMA 缓冲区欠载时输出静音，防止重放旧数据
 - `I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG` 是标准 I2S 格式，几乎所有音频 DAC 都支持
 
 ---
@@ -1420,6 +1421,7 @@ void audio_player_start(void)
     xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
                         pdFALSE, pdTRUE, portMAX_DELAY);
     ESP_LOGI(TAG, "Wi-Fi connected");
+    esp_wifi_set_ps(WIFI_PS_NONE);   // 关闭 WiFi 省电，避免延迟尖峰导致音频卡顿
     set_disp_wifi("  WiFi: Connected ");
 
     // 4. 启动音频流任务和按键任务
@@ -1514,6 +1516,9 @@ void app_main(void)
 |------|--------|--------|
 | 上方（音量+） | GPIO 7 | GND |
 | 下方（音量-） | GPIO 13 | GND |
+| BOOT（播放/暂停） | GPIO 0 | GND |
+
+> **注意：** GPIO 0 是开发板上的 BOOT 按键，板上已有一个按键连接 GPIO 0 到 GND，无需另外接线。如果要用外接按键，需要和板上 BOOT 按键共用 GPIO 0。
 
 > **接线检查清单：**
 > - [ ] GND 全部连通（开发板、屏幕、功放、按键共地）
@@ -1599,7 +1604,9 @@ I (7890) audio: Audio info: 44100 Hz, 2 ch
 
 | 问题 | 可能原因 | 解决方法 |
 |------|---------|---------|
+| 屏幕字符只显示一半（后面被截断） | SSD1306 寻址模式配置错误 | 用 `0x20, 0x02`（Page Mode）替代 `0x20, 0x00`（Horizontal），并添加 `0x21`/`0x22` 地址范围命令 |
 | 屏幕不亮 | I2C 接错、供电不足 | 检查 SCL/SDA 接线，量 3.3V 电压 |
+| 音频时不时卡顿、或"一个字唱两遍" | WiFi 省电导致延迟尖峰、DMA 缓冲区欠载重放 | 1. `esp_wifi_set_ps(WIFI_PS_NONE)` 关 WiFi 省电；2. I2S 设 `auto_clear = true`；3. `dma_desc_num` 增大到 16 |
 | 有声音但有杂音 | I2S 时钟不准 | 这是 ESP32-S3 的正常现象，可以考虑外加 I2S DAC（如 PCM5102） |
 | WiFi 连不上 | 密码错误、信号差 | 核对 SSID 和密码，把开发板放近路由器 |
 | 流获取失败 | URL 过期 | Navidrome 的 token 有时效，需要重新生成 URL |
